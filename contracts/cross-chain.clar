@@ -164,3 +164,33 @@
         (ok true)
     )
 )
+
+(define-public (confirm-deposit 
+    (tx-hash (buff 32))
+    (signature (buff 65))  ;; ECDSA/secp256k1 signature
+)
+    (let (
+        (deposit (unwrap! (map-get? deposits {tx-hash: tx-hash}) (err ERROR-INVALID-BRIDGE-STATUS)))
+        (validator-status (get-validator-status tx-sender))
+    )
+        (asserts! (is-valid-tx-hash tx-hash) (err ERROR-INVALID-TX-HASH))
+        (asserts! (not (var-get bridge-paused)) (err ERROR-BRIDGE-PAUSED))
+        (asserts! (is-valid-signature signature) (err ERROR-INVALID-SIGNATURE))
+        (asserts! (not (get processed deposit)) (err ERROR-ALREADY-PROCESSED))
+        (asserts! (>= (var-get total-validators) MIN-VALIDATORS) (err ERROR-INSUFFICIENT-VALIDATORS))
+        
+        (map-set deposits {tx-hash: tx-hash} (merge deposit {
+            confirmations: (+ (get confirmations deposit) u1),
+            processed: (if (>= (+ (get confirmations deposit) u1) REQUIRED-CONFIRMATIONS) true false)
+        }))
+        
+        (when (>= (get confirmations deposit) REQUIRED-CONFIRMATIONS)
+            (map-set bridge-balances (get recipient deposit)
+                (+ (default-to u0 (map-get? bridge-balances (get recipient deposit))) 
+                   (get amount deposit)))
+            (var-set total-bridged-amount (+ (var-get total-bridged-amount) (get amount deposit)))
+        )
+        
+        (ok true)
+    )
+)
