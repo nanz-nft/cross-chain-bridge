@@ -67,3 +67,43 @@
 (define-data-var last-processed-height uint u0)
 (define-data-var last-emergency-withdrawal-height uint u0)
 (define-data-var total-validators uint u0)
+
+;; Cross-Chain Ledger
+(define-map deposits 
+    { tx-hash: (buff 32) }
+    {
+        amount: uint,
+        recipient: principal,
+        processed: bool,
+        confirmations: uint,
+        timestamp: uint,
+        btc-sender: (buff 33)  ;; SegWit v1 address format
+    }
+)
+
+;; Validator Registry
+(define-map validators 
+    principal 
+    {
+        active: bool, 
+        added-at: uint
+    }
+)
+
+;; Transaction Witnesses
+(define-map validator-signatures
+    { tx-hash: (buff 32), validator: principal }
+    { signature: (buff 65), timestamp: uint }
+)
+
+;; Asset Reserves
+(define-map bridge-balances principal uint)
+
+;; Administrative Functions
+(define-public (initialize-bridge)
+    (begin
+        (asserts! (is-eq tx-sender CONTRACT-DEPLOYER) (err ERROR-NOT-AUTHORIZED))
+        (var-set bridge-paused false)
+        (ok true)
+    )
+)
