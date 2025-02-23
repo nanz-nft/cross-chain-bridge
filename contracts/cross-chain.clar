@@ -107,3 +107,60 @@
         (ok true)
     )
 )
+
+(define-public (pause-bridge)
+    (begin
+        (asserts! (is-eq tx-sender CONTRACT-DEPLOYER) (err ERROR-NOT-AUTHORIZED))
+        (var-set bridge-paused true)
+        (ok true)
+    )
+)
+
+;; Validator Governance
+(define-public (add-validator (validator principal))
+    (begin
+        (asserts! (is-eq tx-sender CONTRACT-DEPLOYER) (err ERROR-NOT-AUTHORIZED))
+        (asserts! (not (is-eq validator addr-zero)) (err ERROR-INVALID-VALIDATOR-ADDRESS))
+        (asserts! (not (get-validator-status validator)) (err ERROR-INVALID-VALIDATOR-ADDRESS))
+        (map-set validators validator { active: true, added-at: block-height })
+        (var-set total-validators (+ (var-get total-validators) u1))
+        (ok true)
+    )
+)
+
+(define-public (remove-validator (validator principal))
+    (begin
+        (asserts! (is-eq tx-sender CONTRACT-DEPLOYER) (err ERROR-NOT-AUTHORIZED))
+        (asserts! (get-validator-status validator) (err ERROR-INVALID-VALIDATOR-ADDRESS))
+        (map-set validators validator { active: false, added-at: u0 })
+        (var-set total-validators (- (var-get total-validators) u1))
+        (ok true)
+    )
+)
+
+;; Bridge Operations
+(define-public (initiate-deposit 
+    (tx-hash (buff 32)) 
+    (amount uint) 
+    (recipient principal)
+    (btc-sender (buff 33))  ;; Taproot address (bech32m)
+)
+    (begin
+        (asserts! (not (var-get bridge-paused)) (err ERROR-BRIDGE-PAUSED))
+        (asserts! (validate-deposit-amount amount) (err ERROR-INVALID-AMOUNT))
+        (asserts! (get-validator-status tx-sender) (err ERROR-NOT-AUTHORIZED))
+        (asserts! (is-valid-tx-hash tx-hash) (err ERROR-INVALID-TX-HASH))
+        (asserts! (is-none (map-get? deposits {tx-hash: tx-hash})) (err ERROR-ALREADY-PROCESSED))
+        
+        (map-set deposits {tx-hash: tx-hash} {
+            amount: amount,
+            recipient: recipient,
+            processed: false,
+            confirmations: u0,
+            timestamp: block-height,
+            btc-sender: btc-sender
+        })
+        
+        (ok true)
+    )
+)
