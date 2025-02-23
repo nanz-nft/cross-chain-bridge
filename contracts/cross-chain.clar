@@ -194,3 +194,61 @@
         (ok true)
     )
 )
+
+(define-public (withdraw 
+    (amount uint)
+    (btc-recipient (buff 34))  ;; Native SegWit (Bech32)
+)
+    (let ((current-balance (get-bridge-balance tx-sender)))
+        (asserts! (not (var-get bridge-paused)) (err ERROR-BRIDGE-PAUSED))
+        (asserts! (>= current-balance amount) (err ERROR-INSUFFICIENT-BALANCE))
+        (asserts! (is-valid-btc-address btc-recipient) (err ERROR-INVALID-BTC-ADDRESS))
+        
+        (map-set bridge-balances tx-sender (- current-balance amount))
+        (var-set total-bridged-amount (- (var-get total-bridged-amount) amount))
+        
+        (ok true)
+    )
+)
+
+;; Emergency Protocols
+(define-public (emergency-withdraw (amount uint) (recipient principal))
+    (begin
+        (asserts! (is-eq tx-sender CONTRACT-DEPLOYER) (err ERROR-NOT-AUTHORIZED))
+        (asserts! (>= (- block-height (var-get last-emergency-withdrawal-height)) EMERGENCY-TIMELOCK) 
+            (err ERROR-TIMELOCK-NOT-EXPIRED))
+        (asserts! (>= (var-get total-bridged-amount) amount) (err ERROR-INSUFFICIENT-BALANCE))
+        
+        (map-set bridge-balances recipient 
+            (+ (default-to u0 (map-get? bridge-balances recipient)) amount))
+        (var-set total-bridged-amount (- (var-get total-bridged-amount) amount))
+        (var-set last-emergency-withdrawal-height block-height)
+        
+        (ok true)
+    )
+)
+
+;; Blockchain State Queries
+(define-read-only (get-validator-status (validator principal))
+    (default-to false (map-get? validators validator active))
+)
+
+(define-read-only (get-bridge-balance (user principal))
+    (default-to u0 (map-get? bridge-balances user))
+)
+
+(define-read-only (validate-deposit-amount (amount uint))
+    (and (>= amount MIN-DEPOSIT-AMOUNT) (<= amount MAX-DEPOSIT-AMOUNT))
+)
+
+(define-read-only (is-valid-tx-hash (tx-hash (buff 32)))
+    (and (not (is-eq tx-hash 0x)) (is-eq (len tx-hash) u32))
+)
+
+(define-read-only (is-valid-signature (signature (buff 65)))
+    (and (not (is-eq signature 0x)) (is-eq (len signature) u65))
+)
+
+(define-read-only (is-valid-btc-address (addr (buff 34)))
+    (try! (secp256k1-verify (hash160 addr) (len addr) 0x00))
+)
